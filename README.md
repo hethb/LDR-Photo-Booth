@@ -3,7 +3,9 @@
 A cute 8-bit pixel-art photo booth for long-distance couples. Two people on two
 different computers each take **4 webcam photos** with a 3-second countdown, and
 the app stitches everyone's shots into a single vertical **2×4 photo-strip** —
-just like the print-out from a real booth.
+just like the print-out from a real booth. 
+
+Made for LDR couples who still want the fun irl dates, but can't do them :(
 
 ## Features
 -  Webcam capture with a big 3-2-1 countdown + camera flash
@@ -15,7 +17,7 @@ just like the print-out from a real booth.
 - ✦ Solo mode to try it out on one machine
 
 ## How two people use it
-1. Both open the site and type the **same** love code (e.g. `SNUGGLEBUG`).
+1. Both open the site and type the **same** love code.
 2. **Person A** clicks **CREATE ROOM**. **Person B** clicks **JOIN ROOM**.
 3. Either of you picks a frame (it syncs to both).
 4. Each person clicks **START 4 SHOTS** and poses through the countdowns.
@@ -25,5 +27,23 @@ just like the print-out from a real booth.
 ## Running it
 Just use the link: https://hethb.github.io/LDR-Photo-Booth/
 The site should be live there! Just send to your partner, and let the fun begin!
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+for AS <3
 
 
