@@ -29,21 +29,37 @@ Just use the link: https://hethb.github.io/LDR-Photo-Booth/
 The site should be live there! Just send to your partner, and let the fun begin!
 
 
+*
+ 
+*
+ 
+*
+ 
+*
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+*
+ 
+*
+ 
+*
+ 
+*
+ 
+*
+ 
+*
+ 
+*
+ 
+*
+ 
+*
+ 
+*
+ 
+*
+ 
+ 
 for AS <3
 
 
