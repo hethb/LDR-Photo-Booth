@@ -1,0 +1,417 @@
+/* =========================================================
+   LDR PHOTO BOOTH ♥  — webcam booth + cross-machine sync
+   ========================================================= */
+
+/* ---------- tiny helpers ---------- */
+const $  = (id) => document.getElementById(id);
+const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+const sanitize = (s) => (s || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+
+/* ---------- floating pixel hearts ---------- */
+(function hearts() {
+  const bg = $('heartsBg');
+  const glyphs = ['♥', '♡', '💕', '✦', '💗', '★'];
+  for (let i = 0; i < 22; i++) {
+    const h = document.createElement('span');
+    h.className = 'heart';
+    h.textContent = glyphs[(Math.random() * glyphs.length) | 0];
+    h.style.left = Math.random() * 100 + 'vw';
+    h.style.fontSize = 14 + Math.random() * 22 + 'px';
+    h.style.animationDuration = 7 + Math.random() * 10 + 's';
+    h.style.animationDelay = -Math.random() * 12 + 's';
+    h.style.color = ['#ff6fb5', '#9b5de5', '#ffe07a', '#ffffff'][(Math.random() * 4) | 0];
+    bg.appendChild(h);
+  }
+})();
+
+/* ---------- cute frame definitions ---------- */
+const FRAMES = [
+  { id:'hearts',  label:'Hearts',  emoji:'💕', bg:'#ffe3f1', band:'#ffc2e0', accent:'#d63d8b', title:'♥ U & ME ♥',         deco:['♥','💕','♡'] },
+  { id:'stars',   label:'Stars',   emoji:'✨', bg:'#efe6ff', band:'#d9c6ff', accent:'#6a2bb0', title:'✦ STARRY US ✦',      deco:['★','✨','☆'] },
+  { id:'flowers', label:'Flowers', emoji:'🌸', bg:'#eafff3', band:'#c2f2da', accent:'#1f9d5a', title:'✿ IN BLOOM ✿',       deco:['🌸','🌼','🌺'] },
+  { id:'rainbow', label:'Rainbow', emoji:'🌈', bg:'#fff5e3', band:'#ffe2b0', accent:'#ff8a3d', title:'⊹ OUR RAINBOW ⊹',     deco:['🌈','☁','💛'] },
+  { id:'cherry',  label:'Sweet',   emoji:'🍓', bg:'#ffe9e9', band:'#ffc7c7', accent:'#d63d3d', title:'♥ SO SWEET ♥',        deco:['🍓','🍒','💋'] },
+  { id:'pastel',  label:'Dreamy',  emoji:'☁️', bg:'#f6ecff', band:'#e3d2ff', accent:'#9b5de5', title:'·｡ JUST US ｡·',      deco:['♡','◆','◇'] },
+];
+let selectedFrame = FRAMES[0];
+
+/* ---------- app state ---------- */
+const state = {
+  myName: 'me',
+  theirName: 'my love',
+  isHost: true,      // host => left column, joiner => right column
+  solo: false,
+  myPhotos: [],      // array of dataURLs (raw, non-mirrored)
+  theirPhotos: [],
+  capturing: false,
+};
+
+let peer = null;
+let conn = null;
+
+/* ---------- screen switching ---------- */
+function show(screenId) {
+  document.querySelectorAll('.screen').forEach((s) => s.classList.remove('active'));
+  $(screenId).classList.add('active');
+}
+
+/* =========================================================
+   1) CONNECTION
+   ========================================================= */
+function setStatus(msg, kind) {
+  const el = $('connectStatus');
+  el.textContent = msg;
+  el.className = 'status' + (kind ? ' ' + kind : '');
+}
+
+function peerIdFor(code) { return 'ldrpb-v1-' + sanitize(code); }
+
+function readNameAndCode() {
+  const code = sanitize($('loveCode').value);
+  state.myName = ($('myName').value || '').trim() || (state.isHost ? 'cutie #1' : 'cutie #2');
+  return code;
+}
+
+$('btnCreate').onclick = () => {
+  const code = readNameAndCode();
+  if (!code) return setStatus('type a love code first ♥', 'err');
+  state.isHost = true;
+  state.solo = false;
+  setStatus('opening your room…');
+  try { if (peer) peer.destroy(); } catch (_) {}
+  peer = new Peer(peerIdFor(code));
+
+  peer.on('open', () => setStatus('room "' + code + '" is open! tell your person to JOIN with the same code ♥', 'ok'));
+  peer.on('connection', (c) => { conn = c; wireConn(); });
+  peer.on('error', (err) => {
+    if (err.type === 'unavailable-id') {
+      setStatus('that room is already open — try JOIN instead (or pick a new code).', 'err');
+    } else {
+      setStatus('connection hiccup: ' + err.type + ' — try again ♥', 'err');
+    }
+  });
+};
+
+$('btnJoin').onclick = () => {
+  const code = readNameAndCode();
+  if (!code) return setStatus('type a love code first ♥', 'err');
+  state.isHost = false;
+  state.solo = false;
+  if (!state.myName || state.myName === 'cutie #1') state.myName = ($('myName').value || '').trim() || 'cutie #2';
+  setStatus('finding your person…');
+  try { if (peer) peer.destroy(); } catch (_) {}
+  peer = new Peer();
+
+  peer.on('open', () => {
+    conn = peer.connect(peerIdFor(code), { reliable: true });
+    conn.on('open', () => wireConn());
+    setTimeout(() => {
+      if (!conn || !conn.open) setStatus('no room found for "' + code + '" yet. make sure your person hit CREATE first ♥', 'err');
+    }, 6000);
+  });
+  peer.on('error', (err) => setStatus('connection hiccup: ' + err.type + ' — try again ♥', 'err'));
+};
+
+$('btnSolo').onclick = () => {
+  state.solo = true;
+  state.isHost = true;
+  state.myName = ($('myName').value || '').trim() || 'me';
+  state.theirName = 'me too';
+  enterBooth();
+};
+
+function wireConn() {
+  setStatus('connected! ♥ entering the booth…', 'ok');
+  conn.on('data', onData);
+  conn.on('close', () => setPartner('your person left the booth 😢', false));
+  // greet + share current frame
+  send({ type: 'hello', name: state.myName });
+  send({ type: 'frame', frame: selectedFrame.id });
+  setTimeout(enterBooth, 600);
+}
+
+function send(obj) { if (conn && conn.open) { try { conn.send(obj); } catch (_) {} } }
+
+function onData(msg) {
+  if (!msg || !msg.type) return;
+  if (msg.type === 'hello') {
+    state.theirName = msg.name || 'my love';
+    setPartner(state.theirName + ' is here! ♥', true);
+  } else if (msg.type === 'frame') {
+    const f = FRAMES.find((x) => x.id === msg.frame);
+    if (f) { selectedFrame = f; markFrameSelected(); }
+  } else if (msg.type === 'photos') {
+    state.theirPhotos = msg.photos || [];
+    state.theirName = msg.name || state.theirName;
+    setPartner(state.theirName + ' finished their 4 shots! ♥', true, true);
+    maybeFinish();
+  }
+}
+
+function setPartner(text, ready, done) {
+  const box = $('partnerStatus');
+  $('partnerText').textContent = text;
+  box.classList.toggle('ready', !!ready);
+  box.classList.toggle('done', !!done);
+}
+
+/* =========================================================
+   2) BOOTH — camera, frames, capture
+   ========================================================= */
+async function enterBooth() {
+  show('screen-booth');
+  buildFramePicker();
+  markFrameSelected();
+  if (state.solo) setPartner('solo mode — both sides will be you ♥', true);
+  await startCamera();
+}
+
+async function startCamera() {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { width: { ideal: 1280 }, height: { ideal: 960 }, facingMode: 'user' },
+      audio: false,
+    });
+    $('video').srcObject = stream;
+  } catch (err) {
+    $('camCaption').textContent = 'could not open your camera 😢 — please allow webcam access & reload.';
+  }
+}
+
+function buildFramePicker() {
+  const wrap = $('framePicker');
+  wrap.innerHTML = '';
+  FRAMES.forEach((f) => {
+    const b = document.createElement('button');
+    b.className = 'frame-opt';
+    b.dataset.id = f.id;
+    b.innerHTML = `<span class="emoji">${f.emoji}</span>${f.label}`;
+    b.onclick = () => {
+      selectedFrame = f;
+      markFrameSelected();
+      send({ type: 'frame', frame: f.id });
+    };
+    wrap.appendChild(b);
+  });
+}
+
+function markFrameSelected() {
+  document.querySelectorAll('.frame-opt').forEach((el) =>
+    el.classList.toggle('sel', el.dataset.id === selectedFrame.id));
+}
+
+/* ----- countdown + capture sequence ----- */
+$('btnStart').onclick = runSequence;
+$('btnRetake').onclick = () => { state.myPhotos = []; renderMyShots(); $('btnRetake').hidden = true; runSequence(); };
+
+async function runSequence() {
+  if (state.capturing) return;
+  const video = $('video');
+  if (!video.srcObject) { $('camCaption').textContent = 'camera not ready yet ♥'; return; }
+  state.capturing = true;
+  state.myPhotos = [];
+  renderMyShots();
+  $('btnStart').disabled = true;
+  $('btnRetake').hidden = true;
+
+  for (let shot = 0; shot < 4; shot++) {
+    $('camCaption').textContent = `shot ${shot + 1} of 4 — strike a pose! ♥`;
+    await countdown(3);
+    capturePhoto();
+    flash();
+    await wait(700); // let them see the shot land
+  }
+
+  state.capturing = false;
+  $('btnStart').disabled = false;
+  $('btnStart').textContent = 'RE-SHOOT ALL ↺';
+  $('btnRetake').hidden = false;
+  $('camCaption').textContent = state.solo
+    ? 'looking adorable! building your strip… ♥'
+    : 'sent to your person! waiting for their 4 shots ♥';
+
+  // share my photos
+  if (state.solo) {
+    state.theirPhotos = state.myPhotos.slice();
+  } else {
+    send({ type: 'photos', photos: state.myPhotos, name: state.myName });
+  }
+  maybeFinish();
+}
+
+function countdown(n) {
+  return new Promise((resolve) => {
+    const el = $('countdown');
+    let c = n;
+    const tick = () => {
+      el.textContent = c;
+      el.classList.remove('tick'); void el.offsetWidth; el.classList.add('tick');
+      if (c === 0) { resolve(); return; }
+      c--;
+      setTimeout(tick, 900);
+    };
+    tick();
+  });
+}
+
+function capturePhoto() {
+  const video = $('video');
+  const cv = $('captureCanvas');
+  const vw = video.videoWidth || 1280;
+  const vh = video.videoHeight || 960;
+  // center-crop to 4:3
+  const targetRatio = 4 / 3;
+  let sw = vw, sh = vw / targetRatio;
+  if (sh > vh) { sh = vh; sw = vh * targetRatio; }
+  const sx = (vw - sw) / 2;
+  const sy = (vh - sh) / 2;
+  cv.width = 640; cv.height = 480;
+  const ctx = cv.getContext('2d');
+  ctx.drawImage(video, sx, sy, sw, sh, 0, 0, 640, 480); // store NON-mirrored
+  state.myPhotos.push(cv.toDataURL('image/jpeg', 0.85));
+  renderMyShots();
+}
+
+function flash() { const f = $('flash'); f.classList.remove('go'); void f.offsetWidth; f.classList.add('go'); }
+
+function renderMyShots() {
+  document.querySelectorAll('#myShots .shot-slot').forEach((slot, i) => {
+    const url = state.myPhotos[i];
+    if (url) { slot.classList.add('filled'); slot.innerHTML = `<img src="${url}" alt="shot ${i + 1}">`; }
+    else { slot.classList.remove('filled'); slot.innerHTML = ''; }
+  });
+}
+
+/* =========================================================
+   3) RESULT — combine into 2x4 strip
+   ========================================================= */
+function maybeFinish() {
+  if (state.myPhotos.length === 4 && state.theirPhotos.length === 4) {
+    buildStrip();
+  }
+}
+
+function loadImg(src) {
+  return new Promise((res) => { const im = new Image(); im.onload = () => res(im); im.src = src; });
+}
+
+async function buildStrip() {
+  await (document.fonts ? document.fonts.ready : Promise.resolve());
+
+  // left column = host's photos, right column = joiner's photos
+  const leftSet  = state.isHost ? state.myPhotos : state.theirPhotos;
+  const rightSet = state.isHost ? state.theirPhotos : state.myPhotos;
+  const leftName  = state.isHost ? state.myName : state.theirName;
+  const rightName = state.isHost ? state.theirName : state.myName;
+
+  const f = selectedFrame;
+  const PAD = 30, GAP = 14, CW = 320, CH = 240;
+  const HEAD = 110, FOOT = 90;
+  const W = PAD * 2 + CW * 2 + GAP;
+  const H = PAD * 2 + HEAD + FOOT + CH * 4 + GAP * 3;
+
+  const cv = $('stripCanvas');
+  cv.width = W; cv.height = H;
+  const ctx = cv.getContext('2d');
+
+  // background
+  ctx.fillStyle = f.bg; ctx.fillRect(0, 0, W, H);
+
+  // outer pixel border
+  ctx.lineWidth = 8; ctx.strokeStyle = f.accent;
+  ctx.strokeRect(8, 8, W - 16, H - 16);
+  ctx.lineWidth = 3; ctx.strokeStyle = '#3a1c40';
+  ctx.strokeRect(15, 15, W - 30, H - 30);
+
+  // header band
+  ctx.fillStyle = f.band;
+  ctx.fillRect(PAD, PAD, W - PAD * 2, HEAD - 12);
+  ctx.strokeStyle = '#3a1c40'; ctx.lineWidth = 3;
+  ctx.strokeRect(PAD, PAD, W - PAD * 2, HEAD - 12);
+
+  // emoji garland (top)
+  garland(ctx, PAD + 16, PAD + 26, W - PAD - 16, f.deco, 22);
+
+  // title
+  ctx.fillStyle = f.accent;
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.font = "20px 'Press Start 2P', monospace";
+  ctx.fillText(f.title, W / 2, PAD + 64);
+
+  // photo grid (mirrored for selfie look)
+  const imgs = await Promise.all([...leftSet, ...rightSet].map(loadImg));
+  const gridTop = PAD + HEAD;
+  for (let row = 0; row < 4; row++) {
+    drawCell(ctx, imgs[row],     PAD,                gridTop + row * (CH + GAP), CW, CH, f.accent);
+    drawCell(ctx, imgs[4 + row], PAD + CW + GAP,     gridTop + row * (CH + GAP), CW, CH, f.accent);
+  }
+
+  // footer band
+  const footTop = H - PAD - FOOT + 12;
+  ctx.fillStyle = f.band;
+  ctx.fillRect(PAD, footTop, W - PAD * 2, FOOT - 12);
+  ctx.strokeStyle = '#3a1c40'; ctx.lineWidth = 3;
+  ctx.strokeRect(PAD, footTop, W - PAD * 2, FOOT - 12);
+
+  // names + date
+  ctx.fillStyle = f.accent;
+  ctx.font = "13px 'Press Start 2P', monospace";
+  const names = (leftName + '  ' + f.emoji + '  ' + rightName).toUpperCase();
+  ctx.fillText(names.length > 30 ? names.slice(0, 30) : names, W / 2, footTop + 26);
+  ctx.fillStyle = '#3a1c40';
+  ctx.font = "16px 'VT323', monospace";
+  const d = new Date();
+  const dateStr = `${d.getFullYear()}·${String(d.getMonth() + 1).padStart(2, '0')}·${String(d.getDate()).padStart(2, '0')}  ♥ LDR PHOTO BOOTH ♥`;
+  ctx.fillText(dateStr, W / 2, footTop + 52);
+
+  show('screen-result');
+}
+
+function drawCell(ctx, img, x, y, w, h, accent) {
+  // mirror the photo so it matches the selfie preview
+  ctx.save();
+  ctx.beginPath(); ctx.rect(x, y, w, h); ctx.clip();
+  ctx.translate(x + w, y); ctx.scale(-1, 1);
+  if (img) {
+    // cover-fit
+    const ir = img.width / img.height, cr = w / h;
+    let dw = w, dh = h, dx = 0, dy = 0;
+    if (ir > cr) { dh = h; dw = h * ir; dx = -(dw - w) / 2; }
+    else { dw = w; dh = w / ir; dy = -(dh - h) / 2; }
+    ctx.drawImage(img, dx, dy, dw, dh);
+  }
+  ctx.restore();
+  // cell frame
+  ctx.lineWidth = 5; ctx.strokeStyle = '#fff'; ctx.strokeRect(x, y, w, h);
+  ctx.lineWidth = 3; ctx.strokeStyle = accent;  ctx.strokeRect(x + 3, y + 3, w - 6, h - 6);
+}
+
+function garland(ctx, x0, y, x1, deco, size) {
+  ctx.save();
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.font = size + "px 'VT323', monospace";
+  const span = x1 - x0, n = 11;
+  for (let i = 0; i <= n; i++) {
+    ctx.fillText(deco[i % deco.length], x0 + (span * i) / n, y);
+  }
+  ctx.restore();
+}
+
+/* ----- result buttons ----- */
+$('btnDownload').onclick = () => {
+  const a = document.createElement('a');
+  a.download = 'ldr-photobooth-' + Date.now() + '.png';
+  a.href = $('stripCanvas').toDataURL('image/png');
+  a.click();
+};
+
+$('btnAgain').onclick = () => {
+  state.myPhotos = [];
+  state.theirPhotos = [];
+  renderMyShots();
+  $('btnStart').textContent = 'START 4 SHOTS ✦';
+  $('btnRetake').hidden = true;
+  setPartner(state.solo ? 'solo mode ♥' : 'waiting for your person…', state.solo);
+  $('camCaption').textContent = 'get cute, then smile! ♥';
+  show('screen-booth');
+};

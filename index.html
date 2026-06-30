@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>♥ LDR Photo Booth ♥</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><text y='14' font-size='14'>%E2%99%A5</text></svg>" />
+</head>
+<body>
+  <!-- floating pixel hearts -->
+  <div class="hearts-bg" id="heartsBg" aria-hidden="true"></div>
+
+  <header class="topbar">
+    <h1 class="title">♥ LDR PHOTO&nbsp;BOOTH ♥</h1>
+    <p class="subtitle blink">two hearts · one strip · any distance</p>
+  </header>
+
+  <main class="stage">
+
+    <!-- ============ STEP 1: CONNECT ============ -->
+    <section class="panel screen active" id="screen-connect">
+      <h2 class="panel-title">＼(^▽^)／ connect with your person</h2>
+
+      <div class="field">
+        <label for="loveCode">your shared love code</label>
+        <input id="loveCode" maxlength="16" placeholder="e.g. SNUGGLEBUG" autocomplete="off" />
+        <p class="hint">both of you type the EXACT same code, then one creates &amp; one joins.</p>
+      </div>
+
+      <div class="field">
+        <label for="myName">your name</label>
+        <input id="myName" maxlength="14" placeholder="cutie #1" autocomplete="off" />
+      </div>
+
+      <div class="btn-row">
+        <button class="pixel-btn pink" id="btnCreate">CREATE ROOM</button>
+        <button class="pixel-btn purple" id="btnJoin">JOIN ROOM</button>
+      </div>
+
+      <button class="pixel-btn ghost small" id="btnSolo">…or try it solo ✦</button>
+
+      <p class="status" id="connectStatus"></p>
+    </section>
+
+    <!-- ============ STEP 2: BOOTH ============ -->
+    <section class="panel screen" id="screen-booth">
+      <div class="booth-grid">
+        <!-- left: live camera -->
+        <div class="cam-wrap">
+          <div class="cam-frame">
+            <video id="video" autoplay playsinline muted></video>
+            <div class="countdown" id="countdown"></div>
+            <div class="flash" id="flash"></div>
+          </div>
+          <p class="cam-caption" id="camCaption">get cute, then smile! ♥</p>
+          <button class="pixel-btn pink big" id="btnStart">START 4 SHOTS ✦</button>
+          <button class="pixel-btn ghost small" id="btnRetake" hidden>RETAKE MINE ↺</button>
+        </div>
+
+        <!-- right: choices + progress -->
+        <div class="side-panel">
+          <h3 class="mini-title">pick your strip frame</h3>
+          <div class="frame-picker" id="framePicker"></div>
+
+          <h3 class="mini-title">your 4 shots</h3>
+          <div class="myshots" id="myShots">
+            <div class="shot-slot" data-i="0"></div>
+            <div class="shot-slot" data-i="1"></div>
+            <div class="shot-slot" data-i="2"></div>
+            <div class="shot-slot" data-i="3"></div>
+          </div>
+
+          <div class="partner-status" id="partnerStatus">
+            <span class="dot"></span><span id="partnerText">waiting for your person…</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ STEP 3: RESULT ============ -->
+    <section class="panel screen" id="screen-result">
+      <h2 class="panel-title">(づ｡◕‿‿◕｡)づ your strip is ready!</h2>
+      <div class="result-wrap">
+        <canvas id="stripCanvas"></canvas>
+      </div>
+      <div class="btn-row">
+        <button class="pixel-btn pink" id="btnDownload">SAVE STRIP ↓</button>
+        <button class="pixel-btn purple" id="btnAgain">DO IT AGAIN ↺</button>
+      </div>
+      <p class="hint center">tip: long-press / right-click the image to save too ♥</p>
+    </section>
+
+  </main>
+
+  <footer class="footer">made with ♥ pixels &amp; longing · <span class="blink">●</span> connected hearts</footer>
+
+  <!-- hidden capture canvas -->
+  <canvas id="captureCanvas" hidden></canvas>
+
+  <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
