@@ -56,9 +56,9 @@
             <div class="countdown" id="countdown"></div>
             <div class="flash" id="flash"></div>
           </div>
-          <p class="cam-caption" id="camCaption">get cute, then smile! ♥</p>
-          <button class="pixel-btn pink big" id="btnStart">START 4 SHOTS ✦</button>
-          <button class="pixel-btn ghost small" id="btnRetake" hidden>RETAKE MINE ↺</button>
+          <p class="cam-caption" id="camCaption">get cute — take each shot when you're ready! ♥</p>
+          <button class="pixel-btn pink big" id="btnStart">TAKE SHOT 1 ✦</button>
+          <button class="pixel-btn ghost small" id="btnRetake" hidden>RE-SHOOT ALL ↺</button>
         </div>
 
         <!-- right: choices + progress -->
@@ -84,8 +84,22 @@
     <!-- ============ STEP 3: RESULT ============ -->
     <section class="panel screen" id="screen-result">
       <h2 class="panel-title">(づ｡◕‿‿◕｡)づ your strip is ready!</h2>
-      <div class="result-wrap">
-        <canvas id="stripCanvas"></canvas>
+      <div class="result-layout">
+        <div class="result-wrap">
+          <canvas id="stripCanvas"></canvas>
+        </div>
+        <div class="result-controls">
+          <h3 class="mini-title">strip theme — change anytime ♥</h3>
+          <div class="frame-picker" id="framePickerResult"></div>
+
+          <h3 class="mini-title">top text</h3>
+          <input id="stripTitleInput" class="strip-input" maxlength="22" autocomplete="off" />
+
+          <h3 class="mini-title">bottom text</h3>
+          <input id="stripCaptionInput" class="strip-input" maxlength="28" autocomplete="off" />
+
+          <p class="hint">type anything you like — leave a box empty to use the theme default ♥</p>
+        </div>
       </div>
       <div class="btn-row">
         <button class="pixel-btn pink" id="btnDownload">SAVE STRIP ↓</button>

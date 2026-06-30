@@ -44,6 +44,11 @@ const state = {
   myPhotos: [],      // array of dataURLs (raw, non-mirrored)
   theirPhotos: [],
   capturing: false,
+  shotIndex: 0,      // which of the 4 shots we're on
+  stripImgs: [],     // cached loaded Image objects for the result (left 4, then right 4)
+  stripTitle: '',    // custom top text ('' = use theme default)
+  stripCaption: '',  // custom bottom text ('' = use names default)
+  defaultCaption: '',
 };
 
 let peer = null;
@@ -160,8 +165,23 @@ function setPartner(text, ready, done) {
    ========================================================= */
 async function enterBooth() {
   show('screen-booth');
-  buildFramePicker();
+  // booth picker: selecting a frame syncs it to your partner
+  buildFramePicker('framePicker', (f) => {
+    selectedFrame = f;
+    markFrameSelected();
+    send({ type: 'frame', frame: f.id });
+  });
+  // result picker: changing the theme just re-renders your own strip
+  buildFramePicker('framePickerResult', (f) => {
+    selectedFrame = f;
+    markFrameSelected();
+    refreshStripInputs();
+    renderStrip();
+  });
   markFrameSelected();
+  state.shotIndex = 0;
+  $('btnStart').textContent = 'TAKE SHOT 1 ✦';
+  $('btnRetake').hidden = true;
   if (state.solo) setPartner('solo mode — both sides will be you ♥', true);
   await startCamera();
 }
@@ -178,19 +198,15 @@ async function startCamera() {
   }
 }
 
-function buildFramePicker() {
-  const wrap = $('framePicker');
+function buildFramePicker(containerId, onPick) {
+  const wrap = $(containerId);
   wrap.innerHTML = '';
   FRAMES.forEach((f) => {
     const b = document.createElement('button');
     b.className = 'frame-opt';
     b.dataset.id = f.id;
     b.innerHTML = `<span class="emoji">${f.emoji}</span>${f.label}`;
-    b.onclick = () => {
-      selectedFrame = f;
-      markFrameSelected();
-      send({ type: 'frame', frame: f.id });
-    };
+    b.onclick = () => onPick(f);
     wrap.appendChild(b);
   });
 }
@@ -200,37 +216,57 @@ function markFrameSelected() {
     el.classList.toggle('sel', el.dataset.id === selectedFrame.id));
 }
 
-/* ----- countdown + capture sequence ----- */
-$('btnStart').onclick = runSequence;
-$('btnRetake').onclick = () => { state.myPhotos = []; renderMyShots(); $('btnRetake').hidden = true; runSequence(); };
+/* ----- per-shot countdown + capture ----- */
+$('btnStart').onclick = takeNextShot;
+$('btnRetake').onclick = resetMyShots;
 
-async function runSequence() {
-  if (state.capturing) return;
+function resetMyShots() {
+  state.myPhotos = [];
+  state.shotIndex = 0;
+  state.capturing = false;
+  renderMyShots();
+  const b = $('btnStart');
+  b.hidden = false; b.disabled = false; b.textContent = 'TAKE SHOT 1 ✦';
+  $('btnRetake').hidden = true;
+  $('camCaption').textContent = 'ready when you are — take each shot one at a time ♥';
+}
+
+async function takeNextShot() {
+  if (state.capturing || state.shotIndex >= 4) return;
   const video = $('video');
   if (!video.srcObject) { $('camCaption').textContent = 'camera not ready yet ♥'; return; }
+
   state.capturing = true;
-  state.myPhotos = [];
-  renderMyShots();
   $('btnStart').disabled = true;
   $('btnRetake').hidden = true;
+  $('camCaption').textContent = `shot ${state.shotIndex + 1} of 4 — strike a pose! ♥`;
 
-  for (let shot = 0; shot < 4; shot++) {
-    $('camCaption').textContent = `shot ${shot + 1} of 4 — strike a pose! ♥`;
-    await countdown(3);
-    capturePhoto();
-    flash();
-    await wait(700); // let them see the shot land
-  }
+  await countdown(3);
+  capturePhoto();          // appends to myPhotos + renders thumbnail
+  flash();
+  await wait(600);         // let them see the shot land
 
+  state.shotIndex++;
   state.capturing = false;
-  $('btnStart').disabled = false;
-  $('btnStart').textContent = 'RE-SHOOT ALL ↺';
+
+  if (state.shotIndex < 4) {
+    const left = 4 - state.shotIndex;
+    $('btnStart').disabled = false;
+    $('btnStart').textContent = `TAKE SHOT ${state.shotIndex + 1} ✦`;
+    $('btnRetake').hidden = false;
+    $('camCaption').textContent = `cute! ${left} more to go — go when you're ready ♥`;
+  } else {
+    finishMyShots();
+  }
+}
+
+function finishMyShots() {
+  $('btnStart').hidden = true;
   $('btnRetake').hidden = false;
   $('camCaption').textContent = state.solo
     ? 'looking adorable! building your strip… ♥'
-    : 'sent to your person! waiting for their 4 shots ♥';
+    : 'all 4 sent! waiting for your person to finish theirs ♥';
 
-  // share my photos
   if (state.solo) {
     state.theirPhotos = state.myPhotos.slice();
   } else {
@@ -295,24 +331,61 @@ function loadImg(src) {
   return new Promise((res) => { const im = new Image(); im.onload = () => res(im); im.src = src; });
 }
 
+// Load the photos once, set up the editable text controls, then draw + show.
 async function buildStrip() {
   await (document.fonts ? document.fonts.ready : Promise.resolve());
 
   // left column = host's photos, right column = joiner's photos
   const leftSet  = state.isHost ? state.myPhotos : state.theirPhotos;
   const rightSet = state.isHost ? state.theirPhotos : state.myPhotos;
-  const leftName  = state.isHost ? state.myName : state.theirName;
-  const rightName = state.isHost ? state.theirName : state.myName;
+  state.leftName  = (state.isHost ? state.myName : state.theirName) || 'me';
+  state.rightName = (state.isHost ? state.theirName : state.myName) || 'my love';
 
+  state.stripImgs = await Promise.all([...leftSet, ...rightSet].map(loadImg));
+
+  refreshStripInputs();
+  renderStrip();
+  show('screen-result');
+}
+
+function defaultCaption() {
+  return (state.leftName + '  ' + selectedFrame.emoji + '  ' + state.rightName).toUpperCase();
+}
+
+// Keep the input placeholders showing what the current theme would use.
+function refreshStripInputs() {
+  $('stripTitleInput').placeholder = selectedFrame.title;
+  $('stripCaptionInput').placeholder = defaultCaption();
+}
+
+$('stripTitleInput').oninput = (e) => { state.stripTitle = e.target.value; renderStrip(); };
+$('stripCaptionInput').oninput = (e) => { state.stripCaption = e.target.value; renderStrip(); };
+
+// Draw text centered, shrinking the font until it fits within maxW.
+function drawFitted(ctx, text, cx, y, maxW, px, family, color) {
+  let size = px;
+  ctx.fillStyle = color;
+  ctx.font = size + "px " + family;
+  while (ctx.measureText(text).width > maxW && size > 8) {
+    size -= 1; ctx.font = size + "px " + family;
+  }
+  ctx.fillText(text, cx, y);
+}
+
+// Synchronous re-draw using cached images + current theme & text.
+function renderStrip() {
+  if (state.stripImgs.length < 8) return;
   const f = selectedFrame;
   const PAD = 30, GAP = 14, CW = 320, CH = 240;
   const HEAD = 110, FOOT = 90;
   const W = PAD * 2 + CW * 2 + GAP;
   const H = PAD * 2 + HEAD + FOOT + CH * 4 + GAP * 3;
+  const innerW = W - PAD * 2 - 24;
 
   const cv = $('stripCanvas');
   cv.width = W; cv.height = H;
   const ctx = cv.getContext('2d');
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
 
   // background
   ctx.fillStyle = f.bg; ctx.fillRect(0, 0, W, H);
@@ -329,21 +402,16 @@ async function buildStrip() {
   ctx.strokeStyle = '#3a1c40'; ctx.lineWidth = 3;
   ctx.strokeRect(PAD, PAD, W - PAD * 2, HEAD - 12);
 
-  // emoji garland (top)
+  // emoji garland (top) + title (custom or theme default)
   garland(ctx, PAD + 16, PAD + 26, W - PAD - 16, f.deco, 22);
-
-  // title
-  ctx.fillStyle = f.accent;
-  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-  ctx.font = "20px 'Press Start 2P', monospace";
-  ctx.fillText(f.title, W / 2, PAD + 64);
+  const title = (state.stripTitle || '').trim() || f.title;
+  drawFitted(ctx, title, W / 2, PAD + 64, innerW, 20, "'Press Start 2P', monospace", f.accent);
 
   // photo grid (mirrored for selfie look)
-  const imgs = await Promise.all([...leftSet, ...rightSet].map(loadImg));
   const gridTop = PAD + HEAD;
   for (let row = 0; row < 4; row++) {
-    drawCell(ctx, imgs[row],     PAD,                gridTop + row * (CH + GAP), CW, CH, f.accent);
-    drawCell(ctx, imgs[4 + row], PAD + CW + GAP,     gridTop + row * (CH + GAP), CW, CH, f.accent);
+    drawCell(ctx, state.stripImgs[row],     PAD,            gridTop + row * (CH + GAP), CW, CH, f.accent);
+    drawCell(ctx, state.stripImgs[4 + row], PAD + CW + GAP, gridTop + row * (CH + GAP), CW, CH, f.accent);
   }
 
   // footer band
@@ -353,18 +421,12 @@ async function buildStrip() {
   ctx.strokeStyle = '#3a1c40'; ctx.lineWidth = 3;
   ctx.strokeRect(PAD, footTop, W - PAD * 2, FOOT - 12);
 
-  // names + date
-  ctx.fillStyle = f.accent;
-  ctx.font = "13px 'Press Start 2P', monospace";
-  const names = (leftName + '  ' + f.emoji + '  ' + rightName).toUpperCase();
-  ctx.fillText(names.length > 30 ? names.slice(0, 30) : names, W / 2, footTop + 26);
-  ctx.fillStyle = '#3a1c40';
-  ctx.font = "16px 'VT323', monospace";
+  // caption (custom or names) + date line
+  const caption = (state.stripCaption || '').trim() || defaultCaption();
+  drawFitted(ctx, caption, W / 2, footTop + 26, innerW, 13, "'Press Start 2P', monospace", f.accent);
   const d = new Date();
   const dateStr = `${d.getFullYear()}·${String(d.getMonth() + 1).padStart(2, '0')}·${String(d.getDate()).padStart(2, '0')}  ♥ LDR PHOTO BOOTH ♥`;
-  ctx.fillText(dateStr, W / 2, footTop + 52);
-
-  show('screen-result');
+  drawFitted(ctx, dateStr, W / 2, footTop + 52, innerW, 16, "'VT323', monospace", '#3a1c40');
 }
 
 function drawCell(ctx, img, x, y, w, h, accent) {
@@ -406,12 +468,13 @@ $('btnDownload').onclick = () => {
 };
 
 $('btnAgain').onclick = () => {
-  state.myPhotos = [];
   state.theirPhotos = [];
-  renderMyShots();
-  $('btnStart').textContent = 'START 4 SHOTS ✦';
-  $('btnRetake').hidden = true;
+  state.stripImgs = [];
+  state.stripTitle = '';
+  state.stripCaption = '';
+  $('stripTitleInput').value = '';
+  $('stripCaptionInput').value = '';
+  resetMyShots();
   setPartner(state.solo ? 'solo mode ♥' : 'waiting for your person…', state.solo);
-  $('camCaption').textContent = 'get cute, then smile! ♥';
   show('screen-booth');
 };

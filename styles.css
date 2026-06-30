@@ -173,7 +173,21 @@ body{
 .partner-status.done .dot{ background:var(--mint); animation:none; }
 
 /* ---- result ---- */
-.result-wrap{ display:flex; justify-content:center; margin:8px 0 18px; }
+.result-layout{
+  display:grid; grid-template-columns:auto 1fr; gap:24px;
+  align-items:start; margin:8px 0 18px; text-align:left;
+}
+@media(max-width:680px){ .result-layout{ grid-template-columns:1fr; } }
+.result-controls .frame-picker{ margin-bottom:6px; }
+.strip-input{
+  width:100%; font-family:'VT323',monospace; font-size:22px;
+  padding:8px 10px; color:var(--ink); background:#fff;
+  border:3px solid var(--ink);
+  box-shadow:inset -3px -3px 0 rgba(0,0,0,.12), 3px 3px 0 var(--pink);
+  outline:none; text-transform:uppercase;
+}
+.strip-input:focus{ border-color:var(--purple); box-shadow:inset -3px -3px 0 rgba(0,0,0,.12), 3px 3px 0 var(--purple); }
+.result-wrap{ display:flex; justify-content:center; }
 #stripCanvas{
   max-width:min(340px, 86vw); height:auto; image-rendering:pixelated;
   border:5px solid var(--ink); box-shadow:0 0 0 5px var(--pink), 8px 8px 0 var(--shadow);
