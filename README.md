@@ -25,7 +25,7 @@ Made for LDR couples who still want the fun irl dates, but can't do them :(
    both screens — hit **SAVE STRIP** to download.
 
 ## Running it
-Just use the link: https://hethb.github.io/LDR-Photo-Booth/
+Just use the link: [https://hethb.github.io/LDR-Photo-Booth/](https://hethb.github.io/LDR-Photo-Booth/)
 The site should be live there! Just send to your partner, and let the fun begin!
 
 
