@@ -43,6 +43,8 @@ const state = {
   solo: false,
   myPhotos: [],      // array of dataURLs (raw, non-mirrored)
   theirPhotos: [],
+  localStream: null, // my live camera stream (shared with my person)
+  partnerPeerId: '', // peer id to call for the live side-by-side view
   capturing: false,
   shotIndex: 0,      // which of the 4 shots we're on
   stripImgs: [],     // cached loaded Image objects for the result (left 4, then right 4)
@@ -53,6 +55,35 @@ const state = {
 
 let peer = null;
 let conn = null;
+
+/* ---------- live camera call (side-by-side booth) ---------- */
+let cameraReadyCbs = [];
+function onCameraReady(cb) {
+  if (state.localStream) cb();
+  else cameraReadyCbs.push(cb);
+}
+
+// answer an incoming media call with our own stream (once the camera is ready)
+function answerCall(call) {
+  onCameraReady(() => {
+    call.answer(state.localStream);
+    call.on('stream', showPartnerStream);
+  });
+}
+
+// place a media call to our person, sharing our stream & receiving theirs
+function callPartner() {
+  if (!peer || !state.partnerPeerId) return;
+  onCameraReady(() => {
+    const call = peer.call(state.partnerPeerId, state.localStream);
+    if (call) call.on('stream', showPartnerStream);
+  });
+}
+
+function showPartnerStream(stream) {
+  $('partnerVideo').srcObject = stream;
+  $('partnerWaiting').hidden = true;
+}
 
 /* ---------- screen switching ---------- */
 function show(screenId) {
@@ -88,6 +119,7 @@ $('btnCreate').onclick = () => {
 
   peer.on('open', () => setStatus('room "' + code + '" is open! tell your person to JOIN with the same code ♥', 'ok'));
   peer.on('connection', (c) => { conn = c; wireConn(); });
+  peer.on('call', answerCall);  // our person shares their live camera with us
   peer.on('error', (err) => {
     if (err.type === 'unavailable-id') {
       setStatus('that room is already open — try JOIN instead (or pick a new code).', 'err');
@@ -102,11 +134,13 @@ $('btnJoin').onclick = () => {
   if (!code) return setStatus('type a love code first ♥', 'err');
   state.isHost = false;
   state.solo = false;
+  state.partnerPeerId = peerIdFor(code);  // we'll call the host to swap live cameras
   if (!state.myName || state.myName === 'cutie #1') state.myName = ($('myName').value || '').trim() || 'cutie #2';
   setStatus('finding your person…');
   try { if (peer) peer.destroy(); } catch (_) {}
   peer = new Peer();
 
+  peer.on('call', answerCall);  // in case the host calls us instead
   peer.on('open', () => {
     conn = peer.connect(peerIdFor(code), { reliable: true });
     conn.on('open', () => wireConn());
@@ -128,7 +162,13 @@ $('btnSolo').onclick = () => {
 function wireConn() {
   setStatus('connected! ♥ entering the booth…', 'ok');
   conn.on('data', onData);
-  conn.on('close', () => setPartner('your person left the booth 😢', false));
+  conn.on('close', () => {
+    setPartner('your person left the booth 😢', false);
+    $('partnerVideo').srcObject = null;
+    $('partnerWaiting').hidden = false;
+    $('partnerWaiting').textContent = 'your person left the booth 😢';
+  });
+  if (!state.isHost) callPartner();  // joiner opens the live side-by-side camera link
   // greet + share current frame
   send({ type: 'hello', name: state.myName });
   send({ type: 'frame', frame: selectedFrame.id });
@@ -141,6 +181,7 @@ function onData(msg) {
   if (!msg || !msg.type) return;
   if (msg.type === 'hello') {
     state.theirName = msg.name || 'my love';
+    $('camTagPartner').textContent = state.theirName + ' ♥';
     setPartner(state.theirName + ' is here! ♥', true);
   } else if (msg.type === 'frame') {
     const f = FRAMES.find((x) => x.id === msg.frame);
@@ -184,6 +225,11 @@ async function enterBooth() {
   $('btnRetake').hidden = true;
   if (state.solo) setPartner('solo mode — both sides will be you ♥', true);
   await startCamera();
+  if (state.solo && state.localStream) {
+    // solo: both strip columns are you, so show yourself in both frames
+    $('camTagPartner').textContent = 'you again ♥';
+    showPartnerStream(state.localStream);
+  }
 }
 
 async function startCamera() {
@@ -193,6 +239,8 @@ async function startCamera() {
       audio: false,
     });
     $('video').srcObject = stream;
+    state.localStream = stream;
+    cameraReadyCbs.splice(0).forEach((cb) => cb());  // release anything waiting on the camera
   } catch (err) {
     $('camCaption').textContent = 'could not open your camera 😢 — please allow webcam access & reload.';
   }

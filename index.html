@@ -49,14 +49,28 @@
     <!-- ============ STEP 2: BOOTH ============ -->
     <section class="panel screen" id="screen-booth">
       <div class="booth-grid">
-        <!-- left: live camera -->
+        <!-- left: the two live cameras, side by side like a real booth -->
         <div class="cam-wrap">
-          <div class="cam-frame">
-            <video id="video" autoplay playsinline muted></video>
-            <div class="countdown" id="countdown"></div>
-            <div class="flash" id="flash"></div>
+          <div class="cam-duo">
+            <!-- your camera (the one that captures) -->
+            <div class="cam-col">
+              <div class="cam-frame">
+                <video id="video" autoplay playsinline muted></video>
+                <div class="countdown" id="countdown"></div>
+                <div class="flash" id="flash"></div>
+              </div>
+              <p class="cam-tag" id="camTagMe">you ♥</p>
+            </div>
+            <!-- your person's live camera (preview only) -->
+            <div class="cam-col">
+              <div class="cam-frame">
+                <video id="partnerVideo" autoplay playsinline muted></video>
+                <div class="cam-waiting" id="partnerWaiting">waiting for your person's camera… ♥</div>
+              </div>
+              <p class="cam-tag" id="camTagPartner">your person</p>
+            </div>
           </div>
-          <p class="cam-caption" id="camCaption">get cute — take each shot when you're ready! ♥</p>
+          <p class="cam-caption" id="camCaption">get cute — plan your poses together, then take each shot when you're ready! ♥</p>
           <button class="pixel-btn pink big" id="btnStart">TAKE SHOT 1 ✦</button>
           <button class="pixel-btn ghost small" id="btnRetake" hidden>RE-SHOOT ALL ↺</button>
         </div>
